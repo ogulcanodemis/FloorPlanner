@@ -94,7 +94,11 @@ body {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  min-width: 0;  /* Prevent flex item overflow */
+  min-width: 0;
+  overflow: hidden;
+  background: #333333;
+  border-radius: 8px;
+  padding: 16px;
 }
 
 /* Section Titles */
@@ -318,7 +322,7 @@ button:disabled,
   background: #333333;
   border-radius: 8px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
-  overflow: hidden;
+  overflow: auto;
   transition: all 0.3s ease;
   border: 1px solid #404040;
   min-height: calc(100vh - 32px);
@@ -534,4 +538,145 @@ canvas {
 .grid-size-control input::-webkit-outer-spin-button {
   opacity: 1;
   height: 24px;
+}
+
+/* Object Properties */
+.object-properties {
+  background: #333333;
+  border-radius: 6px;
+  border: 1px solid #404040;
+  padding: 12px;
+  margin-top: 12px;
+}
+
+.object-properties .size-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.object-properties .size-input label {
+  font-size: 12px;
+  color: #cccccc;
+  min-width: 70px;
+}
+
+.object-properties .size-input input {
+  flex: 1;
+  padding: 4px 8px;
+  border: 1px solid #404040;
+  border-radius: 4px;
+  font-size: 12px;
+  background: #3c3c3c;
+  color: #cccccc;
+  height: 28px;
+}
+
+.object-properties .size-input input:focus {
+  outline: none;
+  border-color: #0078d4;
+}
+
+.object-properties .size-input input::-webkit-inner-spin-button,
+.object-properties .size-input input::-webkit-outer-spin-button {
+  opacity: 1;
+  height: 24px;
+}
+
+/* Room Type Selector */
+.room-type-select {
+  width: 100%;
+  padding: 8px;
+  background: #3c3c3c;
+  border: 1px solid #404040;
+  border-radius: 4px;
+  color: #cccccc;
+  font-size: 12px;
+  cursor: pointer;
+  margin-top: 8px;
+}
+
+.room-type-select:focus {
+  outline: none;
+  border-color: #0078d4;
+}
+
+.room-type-select option {
+  background: #3c3c3c;
+  color: #cccccc;
+  padding: 8px;
+}
+
+/* Area Labels */
+.canvas-container .area-label {
+  pointer-events: none;
+  user-select: none;
+  background: rgba(255, 255, 255, 0.8);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #333333;
+  text-align: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Room Type Indicators */
+.room-type-indicator {
+  position: absolute;
+  top: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #0078d4;
+  color: white;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* Zoom Controls */
+.zoom-level {
+  color: #cccccc;
+  font-size: 12px;
+  text-align: center;
+  margin-top: 8px;
+  padding: 4px;
+  background: #333333;
+  border-radius: 4px;
+  border: 1px solid #404040;
+}
+
+.zoom-controls {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.zoom-controls button {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+/* Scrollbars */
+.canvas-wrapper::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+.canvas-wrapper::-webkit-scrollbar-track {
+  background: #1e1e1e;
+  border-radius: 6px;
+}
+
+.canvas-wrapper::-webkit-scrollbar-thumb {
+  background-color: #4d4d4d;
+  border-radius: 6px;
+  border: 3px solid #1e1e1e;
+}
+
+.canvas-wrapper::-webkit-scrollbar-corner {
+  background: #1e1e1e;
 }

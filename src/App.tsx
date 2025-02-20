@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Canvas, IText, Rect, Pattern, Polygon, Line, Path, Object as FabricObject } from 'fabric';
+import { Canvas, IText, Rect, Pattern, Polygon, Line, Path, Object as FabricObject, InteractiveFabricObject, Point, Group } from 'fabric';
 import './App.css';
 
 interface Layer {
@@ -22,18 +22,87 @@ declare module 'fabric' {
     historyUndo?: string[];
     historyRedo?: string[];
   }
+
+  interface Object {
+    areaLabel?: any;
+    squareMeters?: number;
+    roomType?: string;
+    on(eventName: string, handler: Function): void;
+  }
 }
 
 type BackgroundType = 'plain' | 'grid' | 'lines';
 type ShapeType = 'rectangle' | 'triangle' | 'trapezoid' | 'line' | 'stairs' | 'elevator' | 'entrance';
 
+interface CanvasScale {
+  totalSquareMeters: number;
+  pixelsPerMeter: number;
+}
+
+interface RoomType {
+  name: string;
+  minArea: number;
+  maxArea: number;
+  recommendedArea: number;
+}
+
+const roomTypes: { [key: string]: RoomType } = {
+  livingRoom: {
+    name: 'Living Room',
+    minArea: 20,
+    maxArea: 50,
+    recommendedArea: 30
+  },
+  bedroom: {
+    name: 'Bedroom',
+    minArea: 12,
+    maxArea: 30,
+    recommendedArea: 16
+  },
+  kitchen: {
+    name: 'Kitchen',
+    minArea: 8,
+    maxArea: 25,
+    recommendedArea: 15
+  },
+  bathroom: {
+    name: 'Bathroom',
+    minArea: 4,
+    maxArea: 12,
+    recommendedArea: 6
+  },
+  diningRoom: {
+    name: 'Dining Room',
+    minArea: 10,
+    maxArea: 30,
+    recommendedArea: 20
+  }
+};
+
+type ExtendedFabricObject = FabricObject & {
+  areaLabel?: IText;
+  squareMeters?: number;
+  roomType?: string;
+  on(eventName: string, handler: Function): void;
+};
+
+interface RoomProperties extends FabricObject {
+  roomType?: string;
+  areaLabel?: any;
+  squareMeters?: number;
+}
+
 function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricCanvasRef = useRef<Canvas | null>(null);
   const [mode, setMode] = useState<'select' | ShapeType | 'text'>('select');
-  const [backgroundType, setBackgroundType] = useState<BackgroundType>('plain');
+  const [backgroundType, setBackgroundType] = useState<BackgroundType>('grid');
   const [backgroundColor, setBackgroundColor] = useState('#f0f0f0');
-  const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
+  const [canvasSize, setCanvasSize] = useState({ width: 1000, height: 1000 });
+  const [canvasScale, setCanvasScale] = useState<CanvasScale>({
+    totalSquareMeters: 100, // Default 100m²
+    pixelsPerMeter: 50 // Default 50px = 1m
+  });
   const [roomColor, setRoomColor] = useState('#ffffff');
   const [textColor, setTextColor] = useState('#000000');
   const [roomBorderColor, setRoomBorderColor] = useState('#000000');
@@ -47,8 +116,13 @@ function App() {
   const [activeLayer, setActiveLayer] = useState<string>('1');
   const [showGuides, setShowGuides] = useState(true);
   const [snapToGrid, setSnapToGrid] = useState(true);
-  const [gridSize, setGridSize] = useState(20);
+  const [gridSize, setGridSize] = useState(50); // 1 grid = 1m²
+  const [pixelToMeter, setPixelToMeter] = useState(1); // 1 pixel = 1m²
   const guidesRef = useRef<FabricObject[]>([]);
+  const [selectedRoomType, setSelectedRoomType] = useState<string>('');
+  const [zoomLevel, setZoomLevel] = useState<number>(0.5); // Başlangıçta daha geniş görüntü
+  const minZoom = 0.1;
+  const maxZoom = 10; // Daha fazla zoom yapılabilsin
 
   const createGuides = (canvas: Canvas) => {
     // Clear existing guides
@@ -166,11 +240,40 @@ function App() {
 
   const updateCanvasSize = (width: number, height: number) => {
     if (fabricCanvasRef.current) {
+      // Canvas boyutlarını güncelle
       fabricCanvasRef.current.setWidth(width);
       fabricCanvasRef.current.setHeight(height);
       setCanvasSize({ width, height });
+
+      // Yeni toplam alan hesapla (m²)
+      const newTotalArea = calculateSquareMeters(width, height);
+      setCanvasScale(prev => ({
+        ...prev,
+        totalSquareMeters: newTotalArea
+      }));
+
+      // Tüm nesnelerin alanlarını güncelle
+      fabricCanvasRef.current.getObjects().forEach(obj => {
+        if ((obj instanceof Rect || obj instanceof Polygon) && !obj.get('absolutePositioned')) {
+          const area = calculateSquareMeters(
+            obj.width! * obj.scaleX!,
+            obj.height! * obj.scaleY!
+          );
+          
+          // Alan etiketini güncelle
+          if ((obj as RoomProperties).areaLabel) {
+            const roomTypeText = (obj as RoomProperties).roomType ? 
+              ` (${roomTypes[(obj as RoomProperties).roomType!].name})` : '';
+            (obj as RoomProperties).areaLabel.set({
+              text: `${area.toFixed(2)}m²${roomTypeText}`
+            });
+          }
+        }
+      });
+
       createGridPattern(fabricCanvasRef.current, backgroundType);
       createGuides(fabricCanvasRef.current);
+      fabricCanvasRef.current.renderAll();
     }
   };
 
@@ -268,132 +371,211 @@ function App() {
     canvas.fire('history:append');
   };
 
-  const addShape = (type: ShapeType) => {
+  const addAreaLabel = (object: RoomProperties, area: number) => {
+    if (!(object instanceof Rect || object instanceof Polygon)) return;
+    
+    const label = new IText(`${area}m²`, {
+      left: object.left! + (object.width! * object.scaleX!) / 2,
+      top: object.top! + (object.height! * object.scaleY!) / 2,
+      fontSize: 14,
+      fill: '#333333',
+      textAlign: 'center',
+      originX: 'center',
+      originY: 'center',
+      selectable: false,
+      evented: false,
+      backgroundColor: 'rgba(255, 255, 255, 0.8)',
+      padding: 5
+    }) as unknown as FabricObject;
+
+    if (fabricCanvasRef.current) {
+      fabricCanvasRef.current.add(label);
+      object.areaLabel = label;
+      
+      const updateLabelPosition = () => {
+        if (label && object) {
+          const area = calculateSquareMeters(
+            object.width! * object.scaleX!,
+            object.height! * object.scaleY!
+          );
+          const roomTypeText = object.roomType ? 
+            ` (${roomTypes[object.roomType].name})` : '';
+          
+          (label as any).set({
+            left: object.left! + (object.width! * object.scaleX!) / 2,
+            top: object.top! + (object.height! * object.scaleY!) / 2,
+            text: `${area}m²${roomTypeText}`
+          });
+          fabricCanvasRef.current?.renderAll();
+        }
+      };
+
+      object.on('moving', updateLabelPosition);
+      object.on('scaling', updateLabelPosition);
+    }
+  };
+
+  const addShape = (shapeType: string, defaultSquareMeters: number = 20) => {
     if (!fabricCanvasRef.current) return;
 
-    let shape: FabricObject | undefined;
-    const canvas = fabricCanvasRef.current;
+    if (defaultSquareMeters > canvasScale.totalSquareMeters) {
+        alert(`Default room area (${defaultSquareMeters}m²) cannot be larger than total area (${canvasScale.totalSquareMeters}m²)`);
+        return;
+    }
 
-    switch (type) {
-      case 'rectangle':
+    // Grid boyutuna göre piksel hesapla
+    const sideLength = Math.sqrt(defaultSquareMeters) * gridSize;
+    
+    let shape: RoomProperties;
+    const commonProps = {
+        left: 50,
+        top: 50,
+        fill: 'rgba(0, 0, 255, 0.3)',
+        stroke: 'blue',
+        strokeWidth: 2,
+        selectable: true,
+        hasControls: true
+    };
+
+    if (shapeType === 'rectangle') {
         shape = new Rect({
-          left: 100,
-          top: 100,
-          width: 100,
-          height: 100,
-          fill: roomColor,
-          stroke: roomBorderColor,
-          strokeWidth: 1
+            ...commonProps,
+            width: sideLength,
+            height: sideLength
         });
-        break;
-
-      case 'triangle':
-        shape = new Polygon([
-          { x: 0, y: 100 },
-          { x: 50, y: 0 },
-          { x: 100, y: 100 }
-        ], {
-          left: 100,
-          top: 100,
-          fill: roomColor,
-          stroke: roomBorderColor,
-          strokeWidth: 1
+    } else if (shapeType === 'triangle') {
+        const points = [
+            { x: 0, y: sideLength },           // Alt orta nokta
+            { x: -sideLength/2, y: 0 },        // Sol üst nokta
+            { x: sideLength/2, y: 0 }          // Sağ üst nokta
+        ];
+        shape = new Polygon(points, {
+            ...commonProps
         });
-        break;
-
-      case 'trapezoid':
-        shape = new Polygon([
-          { x: 20, y: 0 },
-          { x: 80, y: 0 },
-          { x: 100, y: 100 },
-          { x: 0, y: 100 }
-        ], {
-          left: 100,
-          top: 100,
-          fill: roomColor,
-          stroke: roomBorderColor,
-          strokeWidth: 1,
-          scaleX: 1.5,
-          scaleY: 1.5
+    } else if (shapeType === 'trapezoid') {
+        const topWidth = sideLength * 0.6;     // Üst kenar genişliği alt kenarın %60'ı
+        const points = [
+            { x: -sideLength/2, y: sideLength },    // Sol alt nokta
+            { x: sideLength/2, y: sideLength },     // Sağ alt nokta
+            { x: topWidth/2, y: 0 },                // Sağ üst nokta
+            { x: -topWidth/2, y: 0 }                // Sol üst nokta
+        ];
+        shape = new Polygon(points, {
+            ...commonProps
         });
-        break;
-
-      case 'line':
-        shape = new Line([50, 50, 200, 50], {
-          stroke: roomBorderColor,
-          strokeWidth: 2
-        });
-        break;
-
-      case 'stairs':
-        // Create stairs symbol
-        const stairsPath = 'M 0 0 L 100 0 L 100 20 L 80 20 L 80 40 L 60 40 L 60 60 L 40 60 L 40 80 L 20 80 L 20 100 L 0 100 Z';
-        shape = new Path(stairsPath, {
-          left: 100,
-          top: 100,
-          fill: roomColor,
-          stroke: roomBorderColor,
-          strokeWidth: 1,
-          scaleX: 0.5,
-          scaleY: 0.5
-        });
-        break;
-
-      case 'elevator':
-        // Create elevator symbol (double rectangle)
-        const outerRect = new Rect({
-          left: 100,
-          top: 100,
-          width: 60,
-          height: 60,
-          fill: roomColor,
-          stroke: roomBorderColor,
-          strokeWidth: 1
-        });
-        const innerRect = new Rect({
-          left: 110,
-          top: 110,
-          width: 40,
-          height: 40,
-          fill: 'transparent',
-          stroke: roomBorderColor,
-          strokeWidth: 1
-        });
-        canvas.add(outerRect, innerRect);
-        canvas.renderAll();
-        return;
-
-      case 'entrance':
-        // Create entrance symbol (arrow)
-        const arrowPath = 'M 0 20 L 40 20 L 40 0 L 60 25 L 40 50 L 40 30 L 0 30 Z';
-        shape = new Path(arrowPath, {
-          left: 100,
-          top: 100,
-          fill: roomColor,
-          stroke: roomBorderColor,
-          strokeWidth: 1,
-          scaleX: 0.8,
-          scaleY: 0.8
-        });
-        break;
-
-      default:
-        return;
-    }
-
-    if (shape) {
-      // Add the shape to both canvas and layer
-      canvas.add(shape);
-      setLayers(layers.map(layer => {
-        if (layer.id === activeLayer && shape) {
-          return { ...layer, objects: [...layer.objects, shape] };
+    } else if (shapeType === 'stairs') {
+        // Merdiven şekli - basamaklar
+        const stepCount = 6; // Basamak sayısı
+        const stepWidth = sideLength;
+        const stepHeight = sideLength / stepCount;
+        const points = [];
+        
+        // Basamakları oluştur
+        for (let i = 0; i < stepCount; i++) {
+            points.push({ x: -stepWidth/2, y: i * stepHeight }); // Sol nokta
+            points.push({ x: -stepWidth/2 + (stepWidth/stepCount) * (i+1), y: i * stepHeight }); // Üst nokta
+            points.push({ x: -stepWidth/2 + (stepWidth/stepCount) * (i+1), y: (i+1) * stepHeight }); // Alt nokta
         }
-        return layer;
-      }));
-      canvas.setActiveObject(shape);
-      canvas.renderAll();
-      saveState();
+        
+        shape = new Polygon(points, {
+            ...commonProps,
+            fill: 'rgba(128, 128, 128, 0.5)',
+            stroke: '#666666'
+        });
+    } else if (shapeType === 'elevator') {
+        // Asansör şekli - Mimari standartlara uygun
+        const elevatorWidth = sideLength * 0.8;
+        const elevatorHeight = sideLength;
+        const doorWidth = elevatorWidth * 0.8;
+        
+        // Ana dikdörtgen (asansör kabini)
+        const mainRect = new Rect({
+            ...commonProps,
+            width: elevatorWidth,
+            height: elevatorHeight,
+            fill: 'rgba(240, 240, 240, 0.5)',
+            stroke: '#666666'
+        });
+        
+        // Asansör kapısı çizgileri
+        const doorLeft = new Line([
+            -doorWidth/2, -elevatorHeight/2,
+            -doorWidth/2, elevatorHeight/2
+        ], {
+            stroke: '#666666',
+            strokeWidth: 2,
+            selectable: false
+        });
+        
+        const doorRight = new Line([
+            doorWidth/2, -elevatorHeight/2,
+            doorWidth/2, elevatorHeight/2
+        ], {
+            stroke: '#666666',
+            strokeWidth: 2,
+            selectable: false
+        });
+        
+        // Asansör sembolü (küçük kare)
+        const symbolSize = elevatorWidth * 0.2;
+        const symbol = new Rect({
+            width: symbolSize,
+            height: symbolSize,
+            left: -symbolSize/2,
+            top: -elevatorHeight/4,
+            fill: '#666666',
+            selectable: false
+        });
+
+        // Tüm elemanları bir grup olarak birleştir
+        shape = new Group([mainRect, doorLeft, doorRight, symbol], {
+            left: 50,
+            top: 50
+        }) as unknown as RoomProperties;
+    } else if (shapeType === 'entrance') {
+        // Giriş şekli - yarım daire
+        const radius = sideLength / 2;
+        const points = [];
+        const steps = 32;
+        
+        // Yarım daire noktaları
+        for (let i = 0; i <= steps; i++) {
+            const angle = (Math.PI * i) / steps;
+            points.push({
+                x: radius * Math.cos(angle),
+                y: radius * Math.sin(angle)
+            });
+        }
+        
+        // Taban çizgisi
+        points.push({ x: radius, y: 0 });
+        points.push({ x: -radius, y: 0 });
+        
+        shape = new Polygon(points, {
+            ...commonProps,
+            fill: 'rgba(144, 238, 144, 0.5)',
+            stroke: '#4CAF50'
+        });
+    } else if (shapeType === 'line') {
+        // Basit çizgi
+        shape = new Line([
+            -sideLength/2, 0,
+            sideLength/2, 0
+        ], {
+            stroke: roomBorderColor,
+            strokeWidth: 2,
+            selectable: true,
+            hasControls: true
+        }) as unknown as RoomProperties;
+    } else {
+        return;
     }
+
+    if (!shape) return;
+
+    fabricCanvasRef.current.add(shape);
+    addAreaLabel(shape, defaultSquareMeters);
+    fabricCanvasRef.current.requestRenderAll();
   };
 
   const handleKeyDown = (e: KeyboardEvent) => {
@@ -414,7 +596,13 @@ function App() {
   const deleteObjects = (objects: FabricObject[]) => {
     if (fabricCanvasRef.current) {
       const canvas = fabricCanvasRef.current;
-      objects.forEach(obj => canvas.remove(obj));
+      objects.forEach(obj => {
+        canvas.remove(obj);
+        // Remove associated area label
+        if ((obj as any).areaLabel) {
+          canvas.remove((obj as any).areaLabel);
+        }
+      });
       canvas.discardActiveObject();
       canvas.renderAll();
       saveState();
@@ -496,7 +684,8 @@ function App() {
         top: 100,
         fontSize: 16,
         fill: textColor
-      });
+      }) as unknown as FabricObject;
+
       fabricCanvasRef.current.add(text);
       fabricCanvasRef.current.setActiveObject(text);
       fabricCanvasRef.current.renderAll();
@@ -639,10 +828,101 @@ function App() {
 
   const updateGridSize = (size: number) => {
     setGridSize(size);
+    
+    // Grid boyutunu değiştirdiğimizde canvas boyutunu da güncelle
+    const sideLengthInMeters = Math.ceil(Math.sqrt(canvasScale.totalSquareMeters));
+    const newSize = sideLengthInMeters * size;
+    
     if (fabricCanvasRef.current) {
+      updateCanvasSize(newSize, newSize);
       createGridPattern(fabricCanvasRef.current, backgroundType);
       createGuides(fabricCanvasRef.current);
     }
+  };
+
+  // Square meter calculations
+  const calculateSquareMeters = (width: number, height: number): number => {
+    // Grid boyutuna göre metre cinsinden alanı hesapla
+    const metersWidth = width / gridSize;
+    const metersHeight = height / gridSize;
+    return Number((metersWidth * metersHeight).toFixed(2));
+  };
+
+  const updateCanvasScale = (totalSquareMeters: number) => {
+    // Toplam alana göre bir kenarın metre cinsinden uzunluğunu hesapla
+    const sideLengthInMeters = Math.ceil(Math.sqrt(totalSquareMeters));
+    
+    // Grid boyutuna göre canvas boyutunu hesapla (her metre için 50 piksel)
+    const newSize = sideLengthInMeters * gridSize;
+
+    // Canvas boyutlarını güncelle
+    if (fabricCanvasRef.current) {
+      updateCanvasSize(newSize, newSize);
+    }
+
+    setCanvasScale({
+      totalSquareMeters,
+      pixelsPerMeter: gridSize
+    });
+
+    // Mevcut nesnelerin ölçeklerini güncelle
+    if (fabricCanvasRef.current) {
+      const canvas = fabricCanvasRef.current;
+      canvas.getObjects().forEach(obj => {
+        if (obj instanceof Rect || obj instanceof Polygon) {
+          const currentArea = calculateSquareMeters(obj.width! * obj.scaleX!, obj.height! * obj.scaleY!);
+          if (currentArea > totalSquareMeters) {
+            const newArea = totalSquareMeters * 0.25;
+            const scaleFactor = Math.sqrt(newArea / currentArea);
+            obj.set({
+              scaleX: obj.scaleX! * scaleFactor,
+              scaleY: obj.scaleY! * scaleFactor
+            });
+            
+            if (obj.areaLabel && obj.areaLabel instanceof IText) {
+              const roomTypeText = (obj as RoomProperties).roomType ? 
+                ` (${roomTypes[(obj as RoomProperties).roomType!].name})` : '';
+              obj.areaLabel.set({
+                text: `${newArea.toFixed(2)}m²${roomTypeText}`
+              });
+            }
+          }
+        }
+      });
+      canvas.renderAll();
+    }
+  };
+
+  const updateShapeSquareMeters = (object: RoomProperties, targetSquareMeters: number) => {
+    if (targetSquareMeters > canvasScale.totalSquareMeters) {
+        alert(`Room area (${targetSquareMeters}m²) cannot be larger than total area (${canvasScale.totalSquareMeters}m²)`);
+        return;
+    }
+
+    // Grid boyutuna göre piksel hesapla
+    const currentArea = calculateSquareMeters(object.width!, object.height!);
+    const scaleFactor = Math.sqrt(targetSquareMeters / currentArea);
+    
+    const newWidth = object.width! * scaleFactor;
+    const newHeight = object.height! * scaleFactor;
+    
+    // Yeni boyutları piksel cinsinden ayarla
+    object.set({
+        width: newWidth,
+        height: newHeight,
+        scaleX: 1,
+        scaleY: 1
+    });
+    
+    // Alan etiketini güncelle
+    const label = fabricCanvasRef.current?.getObjects().find(obj => obj.areaLabel && obj.areaLabel === object) as IText;
+    if (label) {
+        const roomType = object.roomType ? ` (${object.roomType})` : '';
+        label.set('text', `${targetSquareMeters}m²${roomType}`);
+        updateLabelPosition(label, object);
+    }
+    
+    fabricCanvasRef.current?.requestRenderAll();
   };
 
   // Modify object movement to snap to grid
@@ -660,6 +940,189 @@ function App() {
     }
   }, [snapToGrid, gridSize]);
 
+  // Area calculation and reporting
+  const calculateTotalArea = (): { totalArea: number; roomAreas: { name: string; area: number }[] } => {
+    const result = {
+      totalArea: 0,
+      roomAreas: [] as { name: string; area: number }[]
+    };
+
+    if (fabricCanvasRef.current) {
+      fabricCanvasRef.current.getObjects().forEach(obj => {
+        if ((obj instanceof Rect || obj instanceof Polygon) && !obj.get('areaLabel')) {
+          const area = calculateSquareMeters(
+            obj.width! * obj.scaleX!,
+            obj.height! * obj.scaleY!
+          );
+          result.totalArea += area;
+          result.roomAreas.push({
+            name: obj.areaLabel?.text || 'Unnamed Room',
+            area
+          });
+        }
+      });
+    }
+
+    return result;
+  };
+
+  const generateAreaReport = () => {
+    const { totalArea, roomAreas } = calculateTotalArea();
+    
+    const reportContent = `
+Floor Plan Area Report
+---------------------
+Total Area: ${totalArea.toFixed(2)}m²
+
+Room Details:
+${roomAreas.map(room => `${room.name}: ${room.area.toFixed(2)}m²`).join('\n')}
+
+Remaining Area: ${(canvasScale.totalSquareMeters - totalArea).toFixed(2)}m²
+    `.trim();
+
+    // Create and trigger download
+    const blob = new Blob([reportContent], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.download = 'floor-plan-report.txt';
+    link.href = url;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const updateLabelPosition = (label: IText, object: RoomProperties) => {
+    label.set({
+        left: object.left! + object.width! / 2,
+        top: object.top! + object.height! / 2
+    });
+  };
+
+  // İlk yüklemede canvas boyutunu ayarla
+  useEffect(() => {
+    const sideLengthInMeters = Math.ceil(Math.sqrt(canvasScale.totalSquareMeters));
+    const newSize = sideLengthInMeters * gridSize;
+    updateCanvasSize(newSize, newSize);
+  }, []);
+
+  // Zoom fonksiyonları
+  const handleZoomIn = () => {
+    if (fabricCanvasRef.current && zoomLevel < maxZoom) {
+      const newZoom = Math.min(zoomLevel * 1.2, maxZoom); // Daha hassas zoom
+      const canvas = fabricCanvasRef.current;
+      const center = canvas.getCenter();
+      
+      const point = new Point(center.left, center.top);
+      canvas.zoomToPoint(point, newZoom);
+      setZoomLevel(newZoom);
+      
+      updateGridAndGuides();
+    }
+  };
+
+  const handleZoomOut = () => {
+    if (fabricCanvasRef.current && zoomLevel > minZoom) {
+      const newZoom = Math.max(zoomLevel / 1.2, minZoom); // Daha hassas zoom
+      const canvas = fabricCanvasRef.current;
+      const center = canvas.getCenter();
+      
+      const point = new Point(center.left, center.top);
+      canvas.zoomToPoint(point, newZoom);
+      setZoomLevel(newZoom);
+      
+      updateGridAndGuides();
+    }
+  };
+
+  const handleZoomReset = () => {
+    if (fabricCanvasRef.current) {
+      const canvas = fabricCanvasRef.current;
+      canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+      setZoomLevel(1);
+      
+      updateGridAndGuides();
+    }
+  };
+
+  // Mouse wheel ile zoom
+  const handleMouseWheel = (e: WheelEvent) => {
+    if (fabricCanvasRef.current && e.ctrlKey) {
+      e.preventDefault();
+      const canvas = fabricCanvasRef.current;
+      const delta = e.deltaY;
+      let newZoom = zoomLevel;
+
+      if (delta < 0) {
+        newZoom = Math.min(zoomLevel * 1.1, maxZoom);
+      } else {
+        newZoom = Math.max(zoomLevel / 1.1, minZoom);
+      }
+
+      const pointer = canvas.getPointer(e);
+      const point = new Point(pointer.x, pointer.y);
+      canvas.zoomToPoint(point, newZoom);
+      setZoomLevel(newZoom);
+      
+      updateGridAndGuides();
+    }
+  };
+
+  // Grid ve kılavuzları güncelle
+  const updateGridAndGuides = () => {
+    if (fabricCanvasRef.current) {
+      const canvas = fabricCanvasRef.current;
+      createGridPattern(canvas, backgroundType);
+      createGuides(canvas);
+    }
+  };
+
+  // Pan özelliği için mouse event'leri
+  useEffect(() => {
+    if (fabricCanvasRef.current) {
+      const canvas = fabricCanvasRef.current;
+      let isDragging = false;
+      let lastPosX = 0;
+      let lastPosY = 0;
+
+      canvas.on('mouse:down', (opt) => {
+        const evt = opt.e as MouseEvent;
+        if (evt.altKey) {
+          isDragging = true;
+          canvas.selection = false;
+          lastPosX = evt.clientX;
+          lastPosY = evt.clientY;
+        }
+      });
+
+      canvas.on('mouse:move', (opt) => {
+        if (isDragging) {
+          const evt = opt.e as MouseEvent;
+          const vpt = canvas.viewportTransform!;
+          vpt[4] += evt.clientX - lastPosX;
+          vpt[5] += evt.clientY - lastPosY;
+          canvas.requestRenderAll();
+          lastPosX = evt.clientX;
+          lastPosY = evt.clientY;
+        }
+      });
+
+      canvas.on('mouse:up', () => {
+        isDragging = false;
+        canvas.selection = true;
+      });
+
+      // Mouse wheel event listener'ı ekle
+      const canvasElement = canvas.getElement();
+      canvasElement.addEventListener('wheel', handleMouseWheel, { passive: false });
+
+      return () => {
+        canvasElement.removeEventListener('wheel', handleMouseWheel);
+      };
+    }
+  }, [zoomLevel]);
+
+  // Canvas container stilini güncelleyelim
   return (
     <div className="app-container">
       {/* Left Sidebar */}
@@ -821,6 +1284,12 @@ function App() {
             >
               JSON
             </button>
+            <button 
+              onClick={generateAreaReport}
+              data-tooltip="Generate area report"
+            >
+              Report
+            </button>
           </div>
         </div>
 
@@ -884,6 +1353,20 @@ function App() {
         <div>
           <div className="section-title">Canvas Settings</div>
           <div className="canvas-settings">
+            {/* Total Square Meters Input */}
+            <div className="size-input">
+              <label>Total Area (m²)</label>
+              <input
+                type="number"
+                value={canvasScale.totalSquareMeters}
+                onChange={(e) => updateCanvasScale(Number(e.target.value))}
+                min="10"
+                max="1000"
+                step="10"
+                data-tooltip="Set total canvas area in square meters"
+              />
+            </div>
+
             {/* Background Type */}
             <div className="button-group">
               <button 
@@ -948,6 +1431,78 @@ function App() {
             </div>
           </div>
         </div>
+
+        {/* Zoom Controls - Canvas Settings altına ekleyelim */}
+        <div>
+          <div className="section-title">Zoom Controls</div>
+          <div className="button-group">
+            <button
+              onClick={handleZoomIn}
+              disabled={zoomLevel >= maxZoom}
+              data-tooltip="Zoom In"
+            >
+              Zoom In
+            </button>
+            <button
+              onClick={handleZoomOut}
+              disabled={zoomLevel <= minZoom}
+              data-tooltip="Zoom Out"
+            >
+              Zoom Out
+            </button>
+            <button
+              onClick={handleZoomReset}
+              data-tooltip="Reset Zoom"
+            >
+              Reset (100%)
+            </button>
+          </div>
+          <div className="zoom-level">
+            Zoom: {(zoomLevel * 100).toFixed(0)}%
+          </div>
+        </div>
+
+        {/* Add Square Meter Display for Selected Object */}
+        {fabricCanvasRef.current?.getActiveObject() && 
+         (fabricCanvasRef.current.getActiveObject() instanceof Rect || 
+          fabricCanvasRef.current.getActiveObject() instanceof Polygon) && (
+          <div className="object-properties">
+            <div className="section-title">Selected Room</div>
+            <div className="size-input">
+              <label>Area (m²)</label>
+              <input
+                type="number"
+                value={(() => {
+                  const activeObject = fabricCanvasRef.current?.getActiveObject() as RoomProperties;
+                  if (!activeObject) return 0;
+                  return calculateSquareMeters(
+                    activeObject.width! * activeObject.scaleX!,
+                    activeObject.height! * activeObject.scaleY!
+                  );
+                })()}
+                onChange={(e) => {
+                  const activeObject = fabricCanvasRef.current?.getActiveObject() as RoomProperties;
+                  if (activeObject) {
+                    const newArea = Number(e.target.value);
+                    updateShapeSquareMeters(activeObject, newArea);
+                    if (activeObject.areaLabel) {
+                      const roomTypeText = activeObject.roomType ? 
+                        ` (${roomTypes[activeObject.roomType].name})` : '';
+                      activeObject.areaLabel.set({
+                        text: `${newArea}m²${roomTypeText}`
+                      });
+                      fabricCanvasRef.current?.renderAll();
+                    }
+                  }
+                }}
+                min="1"
+                max={canvasScale.totalSquareMeters}
+                step="0.5"
+                data-tooltip="Set room area in square meters"
+              />
+            </div>
+          </div>
+        )}
 
         <div className="divider"></div>
 
@@ -1018,7 +1573,7 @@ function App() {
             </button>
           </div>
           <div className="grid-size-control">
-            <label>Grid Size</label>
+            <label>Grid Size (1 square = {pixelToMeter.toFixed(2)}m²)</label>
             <input
               type="number"
               value={gridSize}
@@ -1029,11 +1584,37 @@ function App() {
             />
           </div>
         </div>
+
+        {/* Room Type Selector */}
+        <div>
+          <div className="section-title">Room Type</div>
+          <select
+            value={selectedRoomType}
+            onChange={(e) => setSelectedRoomType(e.target.value)}
+            className="room-type-select"
+            data-tooltip="Select room type for area constraints"
+          >
+            <option value="">Custom Room</option>
+            {Object.entries(roomTypes).map(([key, type]) => (
+              <option key={key} value={key}>
+                {type.name} ({type.recommendedArea}m²)
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Right Content Area */}
       <div className="canvas-container">
-        <div className="canvas-wrapper" style={{ width: canvasSize.width, height: canvasSize.height }}>
+        <div 
+          className="canvas-wrapper" 
+          style={{ 
+            width: '100%',
+            height: 'calc(100vh - 32px)',
+            overflow: 'hidden',
+            position: 'relative'
+          }}
+        >
           <canvas ref={canvasRef} />
         </div>
       </div>
