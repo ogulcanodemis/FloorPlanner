@@ -1,46 +1,126 @@
-# Getting Started with Create React App
+# Floor Plan Designer
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Modern ve kullanıcı dostu bir kat planı tasarım uygulaması. React ve Fabric.js kullanılarak geliştirilmiştir.
 
-## Available Scripts
 
-In the project directory, you can run:
 
-### `npm start`
+## 🌟 Özellikler
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+### Çizim Araçları
+- **Temel Şekiller**: Dikdörtgen, üçgen, yamuk
+- **Özel Elemanlar**: Merdiven, asansör, giriş, çizgi
+- **Metin Ekleme**: Oda isimleri ve açıklamalar için
+- **Katmanlar**: Çoklu katman desteği ile organize tasarım
+- **Kılavuzlar**: Hassas yerleştirme için kılavuz çizgileri
+- **Izgaraya Yapışma**: Nesneleri otomatik hizalama
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+### Düzenleme Araçları
+- **Seçim**: Tekli ve çoklu nesne seçimi
+- **Silme**: Tekli silme ve toplu silme onayı
+- **Geri Al/İleri Al**: Sınırsız geri alma geçmişi
+- **Renk Özelleştirme**: Oda dolgu, kenarlık ve metin renkleri
+- **Katman Yönetimi**: Görünürlük ve kilit kontrolü
 
-### `npm test`
+### Canvas Ayarları
+- **Arka Plan**: Düz, ızgara veya çizgili
+- **Boyut**: Özelleştirilebilir canvas boyutları
+- **Izgara Boyutu**: Ayarlanabilir ızgara aralığı
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+### Dışa Aktarma
+- PNG formatında görüntü
+- SVG formatında vektörel çizim
+- JSON formatında proje dosyası
 
-### `npm run build`
+## 🚀 Başlangıç
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+### Gereksinimler
+- Node.js (v14 veya üzeri)
+- npm veya yarn
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+### Kurulum
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+```bash
+# Repoyu klonlayın
+git clone https://github.com/ogulcanodemis/floor-plan-designer.git
 
-### `npm run eject`
+# Proje dizinine gidin
+cd floor-plan-designer
 
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
+# Bağımlılıkları yükleyin
+npm install
 
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+# Uygulamayı başlatın
+npm start
+```
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
+## 💻 Kullanım
 
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
+1. **Şekil Ekleme**
+   - Sol menüden istediğiniz şekli seçin
+   - Canvas'a tıklayarak şekli ekleyin
+   - Şekli sürükleyerek konumlandırın
 
-## Learn More
+2. **Düzenleme**
+   - Şekli seçin ve sürükleyerek taşıyın
+   - Köşelerden tutup boyutlandırın
+   - Renk seçicilerle özelleştirin
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+3. **Katmanlar**
+   - "Add Layer" ile yeni katman ekleyin
+   - 👁️ ile katmanı gizleyin/gösterin
+   - 🔒 ile katmanı kilitleyin/kilidini açın
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+4. **Kılavuzlar**
+   - "Guides" ile kılavuzları açın/kapatın
+   - "Snap to Grid" ile ızgaraya yapışmayı etkinleştirin
+   - Grid Size ile ızgara boyutunu ayarlayın
+
+5. **Dışa Aktarma**
+   - PNG: Bitmap görüntü olarak kaydedin
+   - SVG: Vektörel format olarak kaydedin
+   - JSON: Proje dosyası olarak kaydedin
+
+## 🛠️ Teknik Detaylar
+
+### Kullanılan Teknolojiler
+- React
+- TypeScript
+- Fabric.js
+- CSS Modules
+
+### Proje Yapısı
+```
+floor-plan-designer/
+├── src/
+│   ├── components/
+│   ├── hooks/
+│   ├── utils/
+│   ├── App.tsx
+│   └── index.tsx
+├── public/
+└── package.json
+```
+
+## 🤝 Katkıda Bulunma
+
+1. Bu repoyu fork edin
+2. Yeni bir branch oluşturun (`git checkout -b feature/amazing-feature`)
+3. Değişikliklerinizi commit edin (`git commit -m 'Add amazing feature'`)
+4. Branch'inizi push edin (`git push origin feature/amazing-feature`)
+5. Pull Request oluşturun
+
+## 📝 Lisans
+
+Bu proje MIT lisansı altında lisanslanmıştır. Detaylar için [LICENSE](LICENSE) dosyasına bakın.
+
+## 👏 Teşekkürler
+
+- Fabric.js ekibine harika canvas kütüphanesi için
+- React ekibine mükemmel framework için
+- Tüm katkıda bulunanlara
+
+---
+
+Geliştirici: [Oğulcan Odemis]
+İletişim: ogulcan.odemis28@gmail.com
+linkedin: https://www.linkedin.com/in/ogulcanodemiss/
