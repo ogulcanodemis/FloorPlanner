@@ -101,24 +101,6 @@ floor-plan-designer/
 └── package.json
 ```
 
-## 🤝 Katkıda Bulunma
-
-1. Bu repoyu fork edin
-2. Yeni bir branch oluşturun (`git checkout -b feature/amazing-feature`)
-3. Değişikliklerinizi commit edin (`git commit -m 'Add amazing feature'`)
-4. Branch'inizi push edin (`git push origin feature/amazing-feature`)
-5. Pull Request oluşturun
-
-
-
-## 👏 Teşekkürler
-
-- Fabric.js ekibine harika canvas kütüphanesi için
-- React ekibine mükemmel framework için
-- Tüm katkıda bulunanlara
-
----
-
 Geliştirici: [Oğulcan Odemis]
 İletişim: ogulcan.odemis28@gmail.com
 linkedin: https://www.linkedin.com/in/ogulcanodemiss/
